@@ -1325,12 +1325,6 @@ const OutfitRatingScreen = () => {
     } catch (e) {
       console.error("Error accessing API key:", e);
     }
-    
-    if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.includes("TODO")) {
-      setError("এআই সার্ভিসটি বর্তমানে কনফিগার করা নেই। অনুগ্রহ করে সেটিংস থেকে GEMINI_API_KEY সেট করুন।");
-      setIsAnalyzing(false);
-      return;
-    }
 
     const updatedImages = [...images];
 
@@ -1403,6 +1397,25 @@ const OutfitRatingScreen = () => {
           setImages([...updatedImages]);
           continue; // Successfully analyzed via proxy
         }
+      } else {
+        const errData = await proxyResponse.json().catch(() => ({}));
+        console.warn("Proxy returned error:", errData);
+        
+        if (errData.error?.includes("invalid") || errData.details?.includes("invalid")) {
+          setError("আপনার দেওয়া API Key টি ভুল বা অকার্যকর। দয়া করে সঠিক GEMINI_API_KEY দিন।");
+          updatedImages[i] = { ...updatedImages[i], loading: false };
+          setImages([...updatedImages]);
+          setIsAnalyzing(false);
+          return;
+        } else if (errData.error?.includes("missing")) {
+          if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.includes("TODO")) {
+            setError("এআই সার্ভিসটি বর্তমানে কনফিগার করা নেই। অনুগ্রহ করে সেটিংস থেকে GEMINI_API_KEY সেট করুন।");
+            updatedImages[i] = { ...updatedImages[i], loading: false };
+            setImages([...updatedImages]);
+            setIsAnalyzing(false);
+            return;
+          }
+        }
       }
     } catch (proxyErr) {
       console.warn("Proxy analysis failed, falling back to client-side:", proxyErr);
@@ -1410,6 +1423,10 @@ const OutfitRatingScreen = () => {
 
     // Fallback to client-side SDK if proxy fails or is unavailable
     try {
+      if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.includes("TODO")) {
+        throw new Error("API Key is missing for client-side fallback");
+      }
+      
       // Create instance right before use
       const ai = new GoogleGenAI({ apiKey });
       
