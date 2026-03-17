@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "mosque": {
+      "title": "Mosque",
+      "description": "Information about a mosque and its Eid prayer times.",
+      "type": "object",
+      "properties": {
+        "mosque_name": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "city": { "type": "string" },
+        "country": { "type": "string" },
+        "eid_fitr_2026_time": { "type": "string" },
+        "additional_jamaat_times": { "type": "string" },
+        "last_updated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["mosque_name", "latitude", "longitude", "eid_fitr_2026_time"]
+    },
+    "message": {
+      "title": "Message",
+      "description": "A chat message in a public or private room.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "userName": { "type": "string" },
+        "country": { "type": "string" },
+        "countryCode": { "type": "string" },
+        "roomId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "reactions": { "type": "object" },
+        "isReported": { "type": "boolean" },
+        "isEdited": { "type": "boolean" },
+        "isDeleted": { "type": "boolean" },
+        "lastEditedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userName", "roomId", "senderId"]
+    },
+    "online_user": {
+      "title": "Online User",
+      "description": "Information about a user currently active in the chat.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "country": { "type": "string" },
+        "countryCode": { "type": "string" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "lastSeen"]
+    },
+    "developer_profile": {
+      "title": "Developer Profile",
+      "description": "Information about the developer, including their photo URL.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "bio": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "profession": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "photoUrl"]
+    }
+  },
+  "firestore": {
+    "mosques": {
+      "schema": "mosque",
+      "description": "Collection of mosques and their prayer times."
+    },
+    "messages": {
+      "schema": "message",
+      "description": "Collection of chat messages."
+    },
+    "online_users": {
+      "schema": "online_user",
+      "description": "Collection of currently online users."
+    },
+    "developer_profile": {
+      "schema": "developer_profile",
+      "description": "Information about the developer."
+    }
+  }
+}

@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email == "mdomarspc99@gmail.com";
+    }
+
+    function isValidMosque(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.lat is number &&
+             data.lng is number &&
+             data.prayerTimes is list &&
+             data.addedBy is string;
+    }
+
+    function isValidMessage(data) {
+      return (!('userName' in data) || (data.userName is string && data.userName.size() < 200)) &&
+             (!('roomId' in data) || data.roomId is string) &&
+             (!('senderId' in data) || data.senderId is string) &&
+             (!('text' in data) || (data.text is string && data.text.size() <= 5000)) &&
+             (!('imageUrl' in data) || data.imageUrl == null || data.imageUrl is string) &&
+             (!('reactions' in data) || data.reactions is map) &&
+             (!('isReported' in data) || data.isReported is bool) &&
+             (!('isEdited' in data) || data.isEdited is bool) &&
+             (!('isDeleted' in data) || data.isDeleted is bool) &&
+             (!('lastEditedAt' in data) || data.lastEditedAt is timestamp);
+    }
+
+    function isValidOnlineUser(data) {
+      return data.userId is string &&
+             data.name is string && data.name.size() > 0 &&
+             data.lastSeen is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /mosques/{mosqueId} {
+      allow read: if true;
+      allow create: if isValidMosque(request.resource.data);
+      allow update: if isValidMosque(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      // Allow reading all messages to support "No Login" private chats
+      // In a production app, Anonymous Auth would be used to secure this.
+      allow read: if true;
+      
+      // Allow create for everyone (as requested: join without login)
+      allow create: if isValidMessage(request.resource.data);
+      
+      allow update: if isAdmin() || (
+        isValidMessage(request.resource.data) && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'isReported', 'text', 'isEdited', 'isDeleted', 'imageUrl', 'lastEditedAt'])
+      );
+      
+      allow delete: if isAdmin() || (resource.data.senderId is string); // Allow deletion if needed, but ideally restricted
+    }
+
+    match /online_users/{userId} {
+      allow read: if true;
+      allow create, update: if isValidOnlineUser(request.resource.data);
+      allow delete: if true; 
+    }
+
+    match /developer_profile/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /app_content/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    match /{path=**} {
+      allow read: if true;
+    }
+  }
+}
