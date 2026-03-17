@@ -1340,42 +1340,111 @@ const OutfitRatingScreen = () => {
       updatedImages[i] = { ...updatedImages[i], loading: true };
       setImages([...updatedImages]);
 
-      try {
-        // Create instance right before use
-        const ai = new GoogleGenAI({ apiKey });
-        
-        const base64Data = await fileToBase64(updatedImages[i].file);
-        
-        // Simplified prompt for better reliability
-        const prompt = `Analyze this Eid outfit photo. 
-        Return a JSON object with:
-        1. "rating": a number between 5.0 and 10.0
-        2. "feedback": a short, friendly compliment in Bengali about the style/color.
-        3. "estimatedPrice": Guess the price in BDT (e.g., "৳২,৫০০ - ৳৩,৫০০").
-        4. "priceAdvice": Advice on what would be a fair price for this outfit (in Bengali).
-        5. "materialDetails": Detail about the material and why the price is estimated as such (in Bengali).
-        
-        Example: {
-          "rating": 9.2, 
-          "feedback": "চমৎকার পাঞ্জাবি, রঙটা আপনাকে খুব মানিয়েছে!",
-          "estimatedPrice": "৳২,৫০০ - ৳৩,৫০০",
-          "priceAdvice": "এই মানের কাপড়ের জন্য ৩০০০ টাকার আশেপাশে দাম হওয়া উচিত।",
-          "materialDetails": "এটি উন্নত মানের সুতি কাপড় মনে হচ্ছে, যার কারুকাজ বেশ নিখুঁত।"
-        }`;
+    // Try to call the backend proxy first (more reliable for Vercel/Production)
+    try {
+      const base64Data = await fileToBase64(updatedImages[i].file);
+      const prompt = `Analyze this Eid outfit photo. 
+      Return a JSON object with:
+      1. "rating": a number between 5.0 and 10.0
+      2. "feedback": a short, friendly compliment in Bengali about the style/color.
+      3. "estimatedPrice": Guess the price in BDT (e.g., "৳২,৫০০ - ৳৩,৫০০").
+      4. "priceAdvice": Advice on what would be a fair price for this outfit (in Bengali).
+      5. "materialDetails": Detail about the material and why the price is estimated as such (in Bengali).
+      
+      Example: {
+        "rating": 9.2, 
+        "feedback": "চমৎকার পাঞ্জাবি, রঙটা আপনাকে খুব মানিয়েছে!",
+        "estimatedPrice": "৳২,৫০০ - ৳৩,৫০০",
+        "priceAdvice": "এই মানের কাপড়ের জন্য ৩০০০ টাকার আশেপাশে দাম হওয়া উচিত।",
+        "materialDetails": "এটি উন্নত মানের সুতি কাপড় মনে হচ্ছে, যার কারুকাজ বেশ নিখুঁত।"
+      }`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: {
-            parts: [
-              { inlineData: { data: base64Data, mimeType: updatedImages[i].file.type } },
-              { text: prompt }
-            ]
-          },
-          config: { 
-            responseMimeType: "application/json",
-            temperature: 0.7
+      const proxyResponse = await fetch('/api/analyze-outfit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: base64Data,
+          prompt,
+          mimeType: updatedImages[i].file.type,
+          apiKey // Pass the API key to the backend proxy
+        })
+      });
+
+      if (proxyResponse.ok) {
+        const data = await proxyResponse.json();
+        const text = data.text;
+        if (text) {
+          let result;
+          try {
+            result = JSON.parse(text);
+          } catch (parseErr) {
+            result = { rating: 8.5, feedback: "আপনার আউটফিটটি খুব সুন্দর!" };
           }
-        });
+          
+          const rating = result.rating || 8.5;
+          if (rating >= 9.0) {
+            confetti({
+              particleCount: 150,
+              spread: 70,
+              origin: { y: 0.6 },
+              colors: ['#D4AF37', '#1B4D3E', '#FF0000']
+            });
+          }
+
+          updatedImages[i] = { 
+            ...updatedImages[i], 
+            rating: rating, 
+            feedback: result.feedback || "চমৎকার আউটফিট!",
+            estimatedPrice: result.estimatedPrice || "৳১,৫০০ - ৳২,৫০০",
+            priceAdvice: result.priceAdvice || "বাজার দর অনুযায়ী দাম ঠিক আছে।",
+            materialDetails: result.materialDetails || "কাপড়ের মান বেশ ভালো মনে হচ্ছে।",
+            loading: false 
+          };
+          setImages([...updatedImages]);
+          continue; // Successfully analyzed via proxy
+        }
+      }
+    } catch (proxyErr) {
+      console.warn("Proxy analysis failed, falling back to client-side:", proxyErr);
+    }
+
+    // Fallback to client-side SDK if proxy fails or is unavailable
+    try {
+      // Create instance right before use
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const base64Data = await fileToBase64(updatedImages[i].file);
+      
+      // Simplified prompt for better reliability
+      const prompt = `Analyze this Eid outfit photo. 
+      Return a JSON object with:
+      1. "rating": a number between 5.0 and 10.0
+      2. "feedback": a short, friendly compliment in Bengali about the style/color.
+      3. "estimatedPrice": Guess the price in BDT (e.g., "৳২,৫০০ - ৳৩,৫০০").
+      4. "priceAdvice": Advice on what would be a fair price for this outfit (in Bengali).
+      5. "materialDetails": Detail about the material and why the price is estimated as such (in Bengali).
+      
+      Example: {
+        "rating": 9.2, 
+        "feedback": "চমৎকার পাঞ্জাবি, রঙটা আপনাকে খুব মানিয়েছে!",
+        "estimatedPrice": "৳২,৫০০ - ৳৩,৫০০",
+        "priceAdvice": "এই মানের কাপড়ের জন্য ৩০০০ টাকার আশেপাশে দাম হওয়া উচিত।",
+        "materialDetails": "এটি উন্নত মানের সুতি কাপড় মনে হচ্ছে, যার কারুকাজ বেশ নিখুঁত।"
+      }`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: {
+          parts: [
+            { inlineData: { data: base64Data, mimeType: updatedImages[i].file.type } },
+            { text: prompt }
+          ]
+        },
+        config: { 
+          responseMimeType: "application/json",
+          temperature: 0.7
+        }
+      });
 
         const text = response.text;
         if (!text) {

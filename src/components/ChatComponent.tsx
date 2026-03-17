@@ -35,7 +35,62 @@ const ChatComponent: React.FC<ChatComponentProps> = ({ mosques, onSearchArea, on
     setIsLoading(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      // Get API key from environment
+      const apiKey = (typeof process !== 'undefined' && process.env ? process.env.GEMINI_API_KEY : '') || 
+                     // @ts-ignore
+                     (import.meta.env ? import.meta.env.VITE_GEMINI_API_KEY : '');
+
+      // Try to use the backend proxy first (more reliable for Vercel/Production)
+      try {
+        const systemInstruction = `You are the AI engine for the "ঈদের নামাজ" app. 
+          Your goal is to help users find mosques worldwide and view Eid-ul-Fitr 2026 prayer times.
+          Current mosques in database: ${JSON.stringify(mosques?.map(m => ({ name: m.name, address: m.address, prayerTimes: m.prayerTimes })) || [])}
+          
+          Guidelines:
+          - Use a friendly, helpful tone (Bengali/English mix).
+          - If a user asks for a specific area, tell them you'll show it on the map (the app will handle the search).
+          - If a mosque is missing, prompt: "Information not available. Would you like to add the mosque or prayer time?"
+          - Validate user-contributed data by asking for confirmation.
+          - Use Markdown for tables or lists when showing multiple prayer times.
+          - Keep responses concise and focused on Eid prayer times.
+          `;
+
+        const proxyResponse = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: input,
+            history: messages.map(m => ({
+              role: m.role === 'user' ? 'user' : 'model',
+              parts: [{ text: m.content }]
+            })),
+            systemInstruction,
+            apiKey // Pass the API key to the backend proxy
+          })
+        });
+
+        if (proxyResponse.ok) {
+          const data = await proxyResponse.json();
+          const text = data.text;
+          if (text) {
+            setMessages(prev => [...prev, { role: 'model', content: text }]);
+            if (input.toLowerCase().includes('search') || input.toLowerCase().includes('খুঁজ') || input.toLowerCase().includes('কোথায়')) {
+              onSearchArea(input);
+            }
+            setIsLoading(false);
+            return; // Successfully handled via proxy
+          }
+        }
+      } catch (proxyErr) {
+        console.warn("Proxy chat failed, falling back to client-side:", proxyErr);
+      }
+
+      // Fallback to client-side SDK
+      if (!apiKey || apiKey === "undefined" || apiKey === "null") {
+        throw new Error('API Key is missing');
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       
       const systemInstruction = `You are the AI engine for the "ঈদের নামাজ" app. 
         Your goal is to help users find mosques worldwide and view Eid-ul-Fitr 2026 prayer times.
