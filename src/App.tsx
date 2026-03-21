@@ -80,9 +80,46 @@ const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64String = (reader.result as string).split(',')[1];
-      resolve(base64String);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          const base64String = (reader.result as string).split(',')[1];
+          resolve(base64String);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Compress to JPEG with 0.7 quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
     };
     reader.onerror = (error) => reject(error);
   });
@@ -1326,17 +1363,18 @@ const OutfitRatingScreen = () => {
       console.error("Error accessing API key:", e);
     }
 
-    const updatedImages = [...images];
+    const promises = images.map(async (img, i) => {
+      if (img.rating) return;
 
-    for (let i = 0; i < updatedImages.length; i++) {
-      if (updatedImages[i].rating) continue;
-
-      updatedImages[i] = { ...updatedImages[i], loading: true };
-      setImages([...updatedImages]);
+      setImages(prev => {
+        const newImages = [...prev];
+        newImages[i] = { ...newImages[i], loading: true };
+        return newImages;
+      });
 
     // Try to call the backend proxy first (more reliable for Vercel/Production)
     try {
-      const base64Data = await fileToBase64(updatedImages[i].file);
+      const base64Data = await fileToBase64(img.file);
       const prompt = `Analyze this Eid outfit photo. 
       Return a JSON object with:
       1. "rating": a number between 5.0 and 10.0
@@ -1359,7 +1397,7 @@ const OutfitRatingScreen = () => {
         body: JSON.stringify({
           image: base64Data,
           prompt,
-          mimeType: updatedImages[i].file.type,
+          mimeType: 'image/jpeg', // We compressed to jpeg
           apiKey // Pass the API key to the backend proxy
         })
       });
@@ -1385,17 +1423,20 @@ const OutfitRatingScreen = () => {
             });
           }
 
-          updatedImages[i] = { 
-            ...updatedImages[i], 
-            rating: rating, 
-            feedback: result.feedback || "চমৎকার আউটফিট!",
-            estimatedPrice: result.estimatedPrice || "৳১,৫০০ - ৳২,৫০০",
-            priceAdvice: result.priceAdvice || "বাজার দর অনুযায়ী দাম ঠিক আছে।",
-            materialDetails: result.materialDetails || "কাপড়ের মান বেশ ভালো মনে হচ্ছে।",
-            loading: false 
-          };
-          setImages([...updatedImages]);
-          continue; // Successfully analyzed via proxy
+          setImages(prev => {
+            const newImages = [...prev];
+            newImages[i] = { 
+              ...newImages[i], 
+              rating: rating, 
+              feedback: result.feedback || "চমৎকার আউটফিট!",
+              estimatedPrice: result.estimatedPrice || "৳১,৫০০ - ৳২,৫০০",
+              priceAdvice: result.priceAdvice || "বাজার দর অনুযায়ী দাম ঠিক আছে।",
+              materialDetails: result.materialDetails || "কাপড়ের মান বেশ ভালো মনে হচ্ছে।",
+              loading: false 
+            };
+            return newImages;
+          });
+          return; // Successfully analyzed via proxy
         }
       } else {
         const errData = await proxyResponse.json().catch(() => ({}));
@@ -1403,15 +1444,21 @@ const OutfitRatingScreen = () => {
         
         if (errData.error?.includes("invalid") || errData.details?.includes("invalid")) {
           setError("আপনার দেওয়া API Key টি ভুল বা অকার্যকর। দয়া করে সঠিক GEMINI_API_KEY দিন।");
-          updatedImages[i] = { ...updatedImages[i], loading: false };
-          setImages([...updatedImages]);
+          setImages(prev => {
+            const newImages = [...prev];
+            newImages[i] = { ...newImages[i], loading: false };
+            return newImages;
+          });
           setIsAnalyzing(false);
           return;
         } else if (errData.error?.includes("missing")) {
           if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.includes("TODO")) {
             setError("এআই সার্ভিসটি বর্তমানে কনফিগার করা নেই। অনুগ্রহ করে সেটিংস থেকে GEMINI_API_KEY সেট করুন।");
-            updatedImages[i] = { ...updatedImages[i], loading: false };
-            setImages([...updatedImages]);
+            setImages(prev => {
+              const newImages = [...prev];
+              newImages[i] = { ...newImages[i], loading: false };
+              return newImages;
+            });
             setIsAnalyzing(false);
             return;
           }
@@ -1430,7 +1477,7 @@ const OutfitRatingScreen = () => {
       // Create instance right before use
       const ai = new GoogleGenAI({ apiKey });
       
-      const base64Data = await fileToBase64(updatedImages[i].file);
+      const base64Data = await fileToBase64(img.file);
       
       // Simplified prompt for better reliability
       const prompt = `Analyze this Eid outfit photo. 
@@ -1453,7 +1500,7 @@ const OutfitRatingScreen = () => {
         model: "gemini-3-flash-preview",
         contents: {
           parts: [
-            { inlineData: { data: base64Data, mimeType: updatedImages[i].file.type } },
+            { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
             { text: prompt }
           ]
         },
@@ -1488,24 +1535,42 @@ const OutfitRatingScreen = () => {
           });
         }
 
-        updatedImages[i] = { 
-          ...updatedImages[i], 
-          rating: rating, 
-          feedback: result.feedback || "চমৎকার আউটফিট!",
-          estimatedPrice: result.estimatedPrice || "৳১,৫০০ - ৳২,৫০০",
-          priceAdvice: result.priceAdvice || "বাজার দর অনুযায়ী দাম ঠিক আছে।",
-          materialDetails: result.materialDetails || "কাপড়ের মান বেশ ভালো মনে হচ্ছে।",
-          loading: false 
-        };
-        setImages([...updatedImages]);
+        setImages(prev => {
+          const newImages = [...prev];
+          newImages[i] = { 
+            ...newImages[i], 
+            rating: rating, 
+            feedback: result.feedback || "চমৎকার আউটফিট!",
+            estimatedPrice: result.estimatedPrice || "৳১,৫০০ - ৳২,৫০০",
+            priceAdvice: result.priceAdvice || "বাজার দর অনুযায়ী দাম ঠিক আছে।",
+            materialDetails: result.materialDetails || "কাপড়ের মান বেশ ভালো মনে হচ্ছে।",
+            loading: false 
+          };
+          return newImages;
+        });
       } catch (err: any) {
         console.error("Analysis error details:", err);
         
         let userFriendlyError = "এআই বিশ্লেষণ করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।";
         
         const errorStr = String(err);
-        if (errorStr.includes("API key not valid") || errorStr.includes("INVALID_ARGUMENT") || errorStr.includes("400")) {
-          userFriendlyError = "আপনার এআই কী (API Key) সঠিক নয়। অনুগ্রহ করে সেটিংস থেকে সঠিক GEMINI_API_KEY সেট করুন।";
+        if (errorStr.includes("API key not valid") || errorStr.includes("INVALID_ARGUMENT") || errorStr.includes("400") || errorStr.includes("API Key is missing")) {
+          // Fallback to mock data for invalid API key
+          console.log("Using mock response due to invalid API key in client-side fallback.");
+          setImages(prev => {
+            const newImages = [...prev];
+            newImages[i] = { 
+              ...newImages[i], 
+              rating: 8.8, 
+              feedback: "আপনার আউটফিটটি চমৎকার! (এটি একটি ডেমো রেটিং, কারণ আপনার API Key সঠিক নয়)",
+              estimatedPrice: "৳২,০০০ - ৳৩,০০০",
+              priceAdvice: "সঠিক API Key দিলে এআই আরও নিখুঁত দাম বলতে পারবে।",
+              materialDetails: "ছবি দেখে কাপড়ের মান ভালো মনে হচ্ছে।",
+              loading: false 
+            };
+            return newImages;
+          });
+          return;
         } else if (errorStr.includes("Quota exceeded") || errorStr.includes("429")) {
           userFriendlyError = "আজকের ফ্রি লিমিট শেষ হয়ে গেছে। আগামীকাল আবার চেষ্টা করুন।";
         } else if (errorStr.includes("Safety")) {
@@ -1513,11 +1578,15 @@ const OutfitRatingScreen = () => {
         }
 
         setError(userFriendlyError);
-        updatedImages[i] = { ...updatedImages[i], loading: false };
-        setImages([...updatedImages]);
-        break;
+        setImages(prev => {
+          const newImages = [...prev];
+          newImages[i] = { ...newImages[i], loading: false };
+          return newImages;
+        });
       }
-    }
+    });
+
+    await Promise.all(promises);
     setIsAnalyzing(false);
   };
 
@@ -1536,10 +1605,10 @@ const OutfitRatingScreen = () => {
       )}
 
       <div className="mb-8">
-        <label className="block w-full aspect-square max-w-[280px] sm:max-w-sm mx-auto bg-white border-4 border-dashed border-eid-gold/30 rounded-[40px] cursor-pointer hover:border-eid-gold/50 transition-all overflow-hidden relative group shadow-inner">
+        <label className={`block w-full max-w-[280px] sm:max-w-sm mx-auto bg-white border-4 border-dashed border-eid-gold/30 rounded-[40px] cursor-pointer hover:border-eid-gold/50 transition-all overflow-hidden relative group shadow-inner ${images.length === 0 ? 'aspect-square' : ''}`}>
           <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
           {images.length > 0 ? (
-            <img src={images[0].preview} alt="Preview" className="w-full h-full object-cover" />
+            <img src={images[0].preview} alt="Preview" className="w-full h-auto max-h-[500px] object-contain bg-gray-50" />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-eid-gold/60">
               <Camera size={48} className="mb-3 group-hover:scale-110 transition-transform" />
