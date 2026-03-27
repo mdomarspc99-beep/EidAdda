@@ -46,13 +46,16 @@ jobs:
             }
           }
           EOF
-          
-          npx cap add android || true
-          npx cap sync android
       - name: Generate Icons
         run: |
           npm install @capacitor/assets
-          npx capacitor-assets generate --android   
+          npx capacitor-assets generate --android
+
+      - name: Capacitor Sync
+        run: |    
+          npx cap add android || true
+          npx cap sync android
+    
 
       - name: Build Android APK
         run: |
