@@ -21,19 +21,16 @@ jobs:
 
       - name: Build Web Project
         run: |
-          
-          npm run build -- --base=./ || npm run build || true
-          if [ ! -d "dist" ]; then
-            mkdir -p dist
-            cp index.html dist/ 2>/dev/null || true
-          fi
+          npm run build --base=./ || npm run build || true
+          mkdir -p dist
+          cp index.html dist/ 2>/dev/null || true
 
-      - name: Setup Capacitor Config
+      - name: Setup Capacitor and Icons
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          
-          
-          
+          # প্রয়োজনীয় প্যাকেজ ইনস্টল
+          npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets
+
+          # আপনার দেওয়া অ্যাপের নাম ও আইডি দিয়ে কনফিগারেশন তৈরি
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.ec.aoo",
@@ -46,22 +43,19 @@ jobs:
             }
           }
           EOF
-      - name: Generate Icons
-        run: |
-          npm install @capacitor/assets
+
+          # আইকন জেনারেট করা
           npx capacitor-assets generate --android
 
       - name: Capacitor Sync
-        run: |    
+        run: |
           npx cap add android || true
           npx cap sync android
-    
 
       - name: Build Android APK
         run: |
           cd android
-          
-          
+          # গ্র্যাডল কনফিগারেশন ঠিক করা
           echo "configurations.all {
               resolutionStrategy.eachDependency { DependencyResolveDetails details ->
                   if (details.requested.group == 'org.jetbrains.kotlin') {
@@ -69,12 +63,11 @@ jobs:
                   }
               }
           }" >> app/build.gradle
-          
           chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Mobile-App-APK
+          name: EidAdda-App-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
